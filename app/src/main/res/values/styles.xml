@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <color name="primary">#1769E0</color>
+    <color name="primary_dark">#1254B8</color>
+    <color name="background_light">#F5F7FB</color>
+    <color name="text_main">#202938</color>
+    <color name="success">#16A36A</color>
+    <color name="white">#FFFFFF</color>
+
+    <style name="Theme.PDFReader"
+        parent="Theme.MaterialComponents.DayNight.NoActionBar">
+
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryVariant">@color/primary_dark</item>
+        <item name="colorSecondary">@color/success</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@color/background_light</item>
+        <item name="android:navigationBarColor">@color/background_light</item>
+        <item name="android:windowLightNavigationBar">true</item>
+
+    </style>
+
+</resources>
