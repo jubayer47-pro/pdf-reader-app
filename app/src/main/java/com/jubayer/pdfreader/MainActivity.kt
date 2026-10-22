@@ -486,61 +486,105 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    
+
     private fun searchPdf() {
-        val query = searchInput.text.toString().trim()
-        val uri = currentUri
+    val query = searchInput.text.toString().trim()
+    val uri = currentUri
 
-        if (query.isEmpty() || uri == null) {
-            message("Enter a word to search")
-            return
-        }
+    if (query.isEmpty() || uri == null) {
+        message("Enter a word to search")
+        return
+    }
 
-        try {
-            contentResolver.openInputStream(uri).use { stream ->
-                if (stream == null) throw Exception("Cannot read PDF")
+    try {
+        val resultPages = mutableListOf<Int>()
+        val resultLabels = mutableListOf<String>()
 
-                PDDocument.load(stream).use { document ->
-                    val stripper = PDFTextStripper()
+        contentResolver.openInputStream(uri).use { stream ->
+            if (stream == null) {
+                throw Exception("Cannot read PDF")
+            }
 
-                    for (i in 1..document.numberOfPages) {
-                        stripper.startPage = i
-                        stripper.endPage = i
+            PDDocument.load(stream).use { document ->
+                val stripper = PDFTextStripper()
 
-                        val text = stripper.getText(document)
+                for (i in 1..document.numberOfPages) {
+                    stripper.startPage = i
+                    stripper.endPage = i
 
-                        if (text.contains(query, ignoreCase = true)) {
-                            pageIndex = i - 1
-                            renderPage()
-                            message("Found on page $i")
-                            return
+                    val text = stripper.getText(document)
+
+                    if (text.contains(query, ignoreCase = true)) {
+                        resultPages.add(i)
+
+                        val cleanText = text
+                            .replace("\n", " ")
+                            .replace(Regex("\\s+"), " ")
+                            .trim()
+
+                        val position = cleanText.indexOf(
+                            query,
+                            ignoreCase = true
+                        )
+
+                        val snippet = if (position >= 0) {
+                            val start = (position - 35).coerceAtLeast(0)
+                            val end = (position + query.length + 55)
+                                .coerceAtMost(cleanText.length)
+
+                            cleanText.substring(start, end)
+                        } else {
+                            "Matching text found"
                         }
+
+                        resultLabels.add("Page $i\n$snippet")
                     }
                 }
             }
-
-            message("Text not found. Scanned PDFs may need OCR.")
-        } catch (e: Exception) {
-            message("Search failed: ${e.message}")
         }
+
+        if (resultPages.isEmpty()) {
+            message("Text not found. Scanned PDFs may need OCR.")
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                "Search Results: ${resultPages.size} page(s)"
+            )
+            .setItems(resultLabels.toTypedArray()) { _, which ->
+                pageIndex = resultPages[which] - 1
+                renderPage()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+
+    } catch (e: Exception) {
+        message("Search failed: ${e.message}")
+    }
+    }
+    private fun toggleBookmark() {
+    val uri = currentUri ?: return
+
+    val saved = (
+        prefs().getStringSet(bookmarkKey(uri), emptySet())
+            ?: emptySet()
+    ).toMutableSet()
+
+    val page = pageIndex.toString()
+
+    if (saved.contains(page)) {
+        saved.remove(page)
+        message("Bookmark removed")
+    } else {
+        saved.add(page)
+        message("Page bookmarked")
     }
 
-    private fun toggleBookmark() {
-        val uri = currentUri ?: return
-
-        val saved = (prefs().getStringSet(bookmarkKey(uri), emptySet())
-            ?: emptySet()).toMutableSet()
-
-        val page = pageIndex.toString()
-
-        if (saved.contains(page)) {
-            saved.remove(page)
-            message("Bookmark removed")
-        } else {
-            saved.add(page)
-            message("Page bookmarked")
-        }
-
-        prefs().edit().putStringSet(bookmarkKey(uri), saved).apply()
+    prefs().edit()
+        .putStringSet(bookmarkKey(uri), saved)
+        .apply()
     }
 
     private fun showBookmarks() {
@@ -548,7 +592,7 @@ class MainActivity : AppCompatActivity() {
 
         val saved = (prefs().getStringSet(bookmarkKey(uri), emptySet())
             ?: emptySet())
-            .mapNotNull { it.toIntOrNull() }
+            .mapNotNull { it.toIntOrNull()  }
             .sorted()
 
         if (saved.isEmpty()) {
