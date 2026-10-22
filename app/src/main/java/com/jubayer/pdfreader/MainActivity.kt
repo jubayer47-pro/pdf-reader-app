@@ -182,7 +182,7 @@ class MainActivity : AppCompatActivity() {
         searchInput = EditText(this).apply {
             hint = "Search text in PDF"
             textSize = 14f
-            singleLine = true
+            setSingleLine(true)
             setTextColor(if (darkMode) Color.WHITE else Color.BLACK)
             setHintTextColor(Color.GRAY)
         }
