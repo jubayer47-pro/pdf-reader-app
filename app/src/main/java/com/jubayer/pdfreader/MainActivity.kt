@@ -160,6 +160,43 @@ class MainActivity : AppCompatActivity() {
 
         val recent = prefs().getString("recent", "") ?: ""
         val items = recent.split("\n").filter { it.isNotBlank() }
+        if (items.isNotEmpty()) {
+    val lastUri = Uri.parse(items.first())
+
+    content.addView(Button(this).apply {
+        text = "▶  Continue Reading — ${displayName(lastUri)}"
+        isAllCaps = false
+        setOnClickListener {
+            openPdf(
+                lastUri,
+                prefs().getInt(lastKey(lastUri), 0)
+            )
+        }
+    })
+        }
+        if (items.isNotEmpty()) {
+            content.addView(Button(this).apply {
+                text = "Clear Recent PDFs"
+                isAllCaps = false
+
+                setOnClickListener {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Clear Recent PDFs?")
+                        .setMessage(
+                            "Remove all files from the recent list?"
+                        )
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Clear") { _, _ ->
+                            prefs().edit()
+                                .putString("recent", "")
+                                .apply()
+
+                            showHome()
+                        }
+                        .show()
+                }
+            })
+        }
 
         if (items.isEmpty()) {
             content.addView(TextView(this).apply {
