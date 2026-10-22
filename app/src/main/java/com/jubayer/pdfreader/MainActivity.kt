@@ -29,6 +29,7 @@ class MainActivity : AppCompatActivity() {
     private var darkMode = false
     private var touchStartX = 0f
     private var touchStartY = 0f
+    private var zoomScale = 1.0f
 
     private lateinit var pageImage: ImageView
     private lateinit var status: TextView
@@ -370,6 +371,31 @@ class MainActivity : AppCompatActivity() {
         })
 
         root.addView(pageRow)
+        val zoomRow = LinearLayout(this).apply {
+            gravity = Gravity.CENTER
+        }
+
+        zoomRow.addView(Button(this).apply {
+            text = "− Zoom Out"
+            isAllCaps = false
+            setOnClickListener {
+                zoomScale = (zoomScale - 0.25f).coerceAtLeast(1.0f)
+                pageImage.scaleX = zoomScale
+                pageImage.scaleY = zoomScale
+            }
+        })
+
+        zoomRow.addView(Button(this).apply {
+            text = "+ Zoom In"
+            isAllCaps = false
+            setOnClickListener {
+                zoomScale = (zoomScale + 0.25f).coerceAtMost(3.0f)
+                pageImage.scaleX = zoomScale
+                pageImage.scaleY = zoomScale
+            }
+        })
+
+        root.addView(zoomRow)
 
         pageImage = ImageView(this).apply {
     scaleType = ImageView.ScaleType.FIT_CENTER
