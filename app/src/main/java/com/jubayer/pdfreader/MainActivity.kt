@@ -402,6 +402,14 @@ class MainActivity : AppCompatActivity() {
         descriptor = null
         currentUri = null
     }
+    override fun onBackPressed() {
+    if (renderer != null) {
+        closePdf()
+        showHome()
+    } else {
+        super.onBackPressed()
+    }
+    }
 
     private fun message(text: String) {
         Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
