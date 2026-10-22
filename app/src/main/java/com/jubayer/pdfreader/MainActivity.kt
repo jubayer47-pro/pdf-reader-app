@@ -3,15 +3,15 @@ package com.jubayer.pdfreader
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.view.Gravity
 import android.view.View
+import android.view.WindowManager
 import android.widget.*
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -27,7 +27,6 @@ class MainActivity : AppCompatActivity() {
     private var pageIndex = 0
     private var darkMode = false
 
-    private lateinit var root: LinearLayout
     private lateinit var pageImage: ImageView
     private lateinit var status: TextView
     private lateinit var previous: Button
@@ -36,6 +35,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pageInput: EditText
 
     private val blue = Color.rgb(23, 105, 224)
+
+    private fun prefs() =
+        getSharedPreferences("pdf_reader", MODE_PRIVATE)
+
+    private fun lastKey(uri: Uri) = "last_${uri}"
+    private fun bookmarkKey(uri: Uri) = "bookmarks_${uri}"
 
     private val picker =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) {
@@ -54,47 +59,79 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         PDFBoxResourceLoader.init(applicationContext)
+
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (renderer != null) {
+                        closePdf()
+                        showHome()
+                    } else {
+                        finish()
+                    }
+                }
+            }
+        )
+
         showHome()
     }
 
-    private fun prefs() =
-        getSharedPreferences("pdf_reader", MODE_PRIVATE)
-
-    private fun lastPageKey(uri: Uri) = "last_${uri}"
-
-    private fun bookmarkKey(uri: Uri) = "bookmarks_${uri}"
-
     private fun saveRecent(uri: Uri) {
         val old = prefs().getString("recent", "") ?: ""
-        val list = (listOf(uri.toString()) + old.split("\n")
+        val items = (listOf(uri.toString()) + old.split("\n")
             .filter { it.isNotBlank() && it != uri.toString() })
-            .take(15)
-        prefs().edit().putString("recent", list.joinToString("\n")).apply()
+            .take(20)
+
+        prefs().edit()
+            .putString("recent", items.joinToString("\n"))
+            .apply()
+    }
+
+    private fun displayName(uri: Uri): String {
+        val name = uri.lastPathSegment ?: "PDF Document"
+        return Uri.decode(name.substringAfterLast('/'))
     }
 
     private fun showHome() {
-        root = LinearLayout(this).apply {
+        val dark = prefs().getBoolean("dark_mode", false)
+        darkMode = dark
+
+        val bg = if (dark) Color.rgb(24, 27, 33)
+                 else Color.rgb(245, 247, 251)
+        val fg = if (dark) Color.WHITE
+                 else Color.rgb(32, 41, 56)
+
+        window.statusBarColor = bg
+        window.navigationBarColor = bg
+        window.decorView.systemUiVisibility =
+            if (dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
+                View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+
+        val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 32, 24, 24)
-            setBackgroundColor(Color.rgb(245, 247, 251))
+            setPadding(22, 28, 22, 24)
+            setBackgroundColor(bg)
         }
 
-        root.addView(TextView(this).apply {
+        content.addView(TextView(this).apply {
             text = "PDF Reader"
             textSize = 30f
-            setTextColor(Color.rgb(25, 45, 75))
+            setTextColor(fg)
         })
 
-        root.addView(TextView(this).apply {
-            text = "Read, search and save your documents"
+        content.addView(TextView(this).apply {
+            text = "Your documents, your reading space"
             textSize = 14f
-            setTextColor(Color.DKGRAY)
-            setPadding(0, 5, 0, 20)
+            setTextColor(if (dark) Color.LTGRAY else Color.DKGRAY)
+            setPadding(0, 6, 0, 20)
         })
 
-        root.addView(Button(this).apply {
-            text = "＋ Open PDF"
+        content.addView(Button(this).apply {
+            text = "＋  Open PDF"
+            isAllCaps = false
             setTextColor(Color.WHITE)
             setBackgroundColor(blue)
             setOnClickListener {
@@ -102,48 +139,65 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        root.addView(TextView(this).apply {
+        content.addView(Button(this).apply {
+            text = if (dark) "☀  Light Mode" else "🌙  Dark Mode"
+            isAllCaps = false
+            setOnClickListener {
+                prefs().edit().putBoolean("dark_mode", !dark).apply()
+                showHome()
+            }
+        })
+
+        content.addView(TextView(this).apply {
             text = "Recent PDFs"
-            textSize = 20f
-            setTextColor(Color.rgb(25, 45, 75))
-            setPadding(0, 24, 0, 8)
+            textSize = 21f
+            setTextColor(fg)
+            setPadding(0, 22, 0, 10)
         })
 
         val recent = prefs().getString("recent", "") ?: ""
         val items = recent.split("\n").filter { it.isNotBlank() }
 
         if (items.isEmpty()) {
-            root.addView(TextView(this).apply {
-                text = "Your recent PDFs will appear here."
-                setTextColor(Color.DKGRAY)
+            content.addView(TextView(this).apply {
+                text = "No recent PDFs yet. Tap Open PDF to begin."
+                textSize = 15f
+                setTextColor(if (dark) Color.LTGRAY else Color.DKGRAY)
+                setPadding(0, 12, 0, 12)
             })
         } else {
             items.forEach { value ->
                 val uri = Uri.parse(value)
-                root.addView(Button(this).apply {
-                    text = "📄  ${uri.lastPathSegment ?: "PDF Document"}"
+                content.addView(Button(this).apply {
+                    text = "📄  ${displayName(uri)}"
                     isAllCaps = false
+                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
                     setOnClickListener {
-                        val savedPage = prefs().getInt(lastPageKey(uri), 0)
-                        openPdf(uri, savedPage)
+                        openPdf(uri, prefs().getInt(lastKey(uri), 0))
                     }
                 })
             }
         }
 
-        setContentView(root)
+        val scroll = ScrollView(this)
+        scroll.addView(content)
+        setContentView(scroll)
     }
 
     private fun openPdf(uri: Uri, savedPage: Int?) {
         closePdf()
+
         try {
             descriptor = contentResolver.openFileDescriptor(uri, "r")
-            val fd = descriptor ?: throw Exception("Cannot access this file")
-            renderer = PdfRenderer(fd)
+                ?: throw Exception("Cannot access this file")
+
+            renderer = PdfRenderer(descriptor!!)
             currentUri = uri
-            val count = renderer?.pageCount ?: 1
+
+            val count = renderer!!.pageCount
             pageIndex = (savedPage ?: 0).coerceIn(0, count - 1)
             darkMode = prefs().getBoolean("dark_mode", false)
+
             showReader()
             renderPage()
         } catch (e: Exception) {
@@ -153,65 +207,107 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showReader() {
-        root = LinearLayout(this).apply {
+        val bg = if (darkMode) Color.rgb(24, 27, 33)
+                 else Color.rgb(245, 247, 251)
+        val fg = if (darkMode) Color.WHITE
+                 else Color.rgb(32, 41, 56)
+
+        window.statusBarColor = bg
+        window.navigationBarColor = bg
+        window.decorView.systemUiVisibility =
+            if (darkMode) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
+                View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(8, 8, 8, 8)
-            setBackgroundColor(if (darkMode) Color.rgb(30, 30, 30) else Color.rgb(245, 247, 251))
+            setBackgroundColor(bg)
         }
 
-        root.addView(Button(this).apply {
+        val top = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        top.addView(Button(this).apply {
             text = "← Home"
+            isAllCaps = false
             setOnClickListener {
                 closePdf()
                 showHome()
             }
-        })
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+
+        top.addView(Button(this).apply {
+            text = if (darkMode) "☀ Light" else "🌙 Dark"
+            isAllCaps = false
+            setOnClickListener {
+                darkMode = !darkMode
+                prefs().edit().putBoolean("dark_mode", darkMode).apply()
+                showReader()
+                renderPage()
+            }
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+
+        root.addView(top)
 
         status = TextView(this).apply {
             textSize = 16f
             gravity = Gravity.CENTER
             setPadding(4, 8, 4, 8)
-            setTextColor(if (darkMode) Color.WHITE else Color.DKGRAY)
+            setTextColor(fg)
         }
         root.addView(status)
 
         val searchRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
         }
 
         searchInput = EditText(this).apply {
             hint = "Search text in PDF"
-            textSize = 14f
             setSingleLine(true)
-            setTextColor(if (darkMode) Color.WHITE else Color.BLACK)
+            textSize = 14f
+            setTextColor(fg)
             setHintTextColor(Color.GRAY)
         }
 
-        searchRow.addView(searchInput, LinearLayout.LayoutParams(0, -2, 1f))
+        searchRow.addView(
+            searchInput,
+            LinearLayout.LayoutParams(0, -2, 1f)
+        )
+
         searchRow.addView(Button(this).apply {
             text = "Search"
+            isAllCaps = false
             setOnClickListener { searchPdf() }
         })
+
         root.addView(searchRow)
 
-        val tools = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+        val pageRow = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
         }
 
         pageInput = EditText(this).apply {
-            hint = "Page no."
-            textSize = 14f
+            hint = "Page number"
             inputType = 2
-            setTextColor(if (darkMode) Color.WHITE else Color.BLACK)
+            setSingleLine(true)
+            textSize = 14f
+            setTextColor(fg)
+            setHintTextColor(Color.GRAY)
         }
-        tools.addView(pageInput, LinearLayout.LayoutParams(0, -2, 1f))
 
-        tools.addView(Button(this).apply {
+        pageRow.addView(
+            pageInput,
+            LinearLayout.LayoutParams(0, -2, 1f)
+        )
+
+        pageRow.addView(Button(this).apply {
             text = "Go"
+            isAllCaps = false
             setOnClickListener {
                 val target = pageInput.text.toString().toIntOrNull()
                 val count = renderer?.pageCount ?: 0
+
                 if (target != null && target in 1..count) {
                     pageIndex = target - 1
                     renderPage()
@@ -221,45 +317,41 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        tools.addView(Button(this).apply {
+        pageRow.addView(Button(this).apply {
             text = "Bookmark"
+            isAllCaps = false
             setOnClickListener { toggleBookmark() }
         })
 
-        tools.addView(Button(this).apply {
+        pageRow.addView(Button(this).apply {
             text = "Saved"
+            isAllCaps = false
             setOnClickListener { showBookmarks() }
         })
 
-        root.addView(tools)
-
-        root.addView(Button(this).apply {
-            text = if (darkMode) "☀ Light Mode" else "🌙 Dark Mode"
-            setOnClickListener {
-                darkMode = !darkMode
-                prefs().edit().putBoolean("dark_mode", darkMode).apply()
-                showReader()
-                renderPage()
-            }
-        })
+        root.addView(pageRow)
 
         pageImage = ImageView(this).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
             adjustViewBounds = true
             contentDescription = "PDF page"
-            setBackgroundColor(if (darkMode) Color.rgb(40, 40, 40) else Color.WHITE)
+            setBackgroundColor(Color.WHITE)
         }
 
-        root.addView(pageImage, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-        ))
+        root.addView(
+            pageImage,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+        )
 
-        val nav = LinearLayout(this).apply {
+        val navigation = LinearLayout(this).apply {
             gravity = Gravity.CENTER
         }
 
         previous = Button(this).apply {
             text = "Previous"
+            isAllCaps = false
             setOnClickListener {
                 if (pageIndex > 0) {
                     pageIndex--
@@ -270,6 +362,7 @@ class MainActivity : AppCompatActivity() {
 
         next = Button(this).apply {
             text = "Next"
+            isAllCaps = false
             setOnClickListener {
                 val count = renderer?.pageCount ?: 0
                 if (pageIndex < count - 1) {
@@ -279,39 +372,42 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        nav.addView(previous)
-        nav.addView(next)
-        root.addView(nav)
+        navigation.addView(previous, LinearLayout.LayoutParams(0, -2, 1f))
+        navigation.addView(next, LinearLayout.LayoutParams(0, -2, 1f))
+        root.addView(navigation)
+
         setContentView(root)
     }
 
     private fun renderPage() {
         val pdf = renderer ?: return
+
         try {
             val page = pdf.openPage(pageIndex)
+
             val bitmap = Bitmap.createBitmap(
-                page.width, page.height, Bitmap.Config.ARGB_8888
+                page.width,
+                page.height,
+                Bitmap.Config.ARGB_8888
             )
+
             bitmap.eraseColor(Color.WHITE)
-            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            page.render(
+                bitmap, null, null,
+                PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
+            )
             page.close()
 
-            pageImage.colorFilter = if (darkMode) {
-                ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
-                    -1f, 0f, 0f, 0f, 255f,
-                    0f, -1f, 0f, 0f, 255f,
-                    0f, 0f, -1f, 0f, 255f,
-                    0f, 0f, 0f, 1f, 0f
-                )))
-            } else null
-
+            // Keep the PDF page's original colors in both modes.
+            pageImage.colorFilter = null
             pageImage.setImageBitmap(bitmap)
+
             status.text = "Page ${pageIndex + 1} of ${pdf.pageCount}"
             previous.isEnabled = pageIndex > 0
             next.isEnabled = pageIndex < pdf.pageCount - 1
 
             currentUri?.let { uri ->
-                prefs().edit().putInt(lastPageKey(uri), pageIndex).apply()
+                prefs().edit().putInt(lastKey(uri), pageIndex).apply()
             }
         } catch (_: Exception) {
             message("Could not render this page")
@@ -321,6 +417,7 @@ class MainActivity : AppCompatActivity() {
     private fun searchPdf() {
         val query = searchInput.text.toString().trim()
         val uri = currentUri
+
         if (query.isEmpty() || uri == null) {
             message("Enter a word to search")
             return
@@ -329,12 +426,16 @@ class MainActivity : AppCompatActivity() {
         try {
             contentResolver.openInputStream(uri).use { stream ->
                 if (stream == null) throw Exception("Cannot read PDF")
+
                 PDDocument.load(stream).use { document ->
                     val stripper = PDFTextStripper()
+
                     for (i in 1..document.numberOfPages) {
                         stripper.startPage = i
                         stripper.endPage = i
+
                         val text = stripper.getText(document)
+
                         if (text.contains(query, ignoreCase = true)) {
                             pageIndex = i - 1
                             renderPage()
@@ -344,7 +445,8 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-            message("Text not found in this PDF")
+
+            message("Text not found. Scanned PDFs may need OCR.")
         } catch (e: Exception) {
             message("Search failed: ${e.message}")
         }
@@ -352,8 +454,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun toggleBookmark() {
         val uri = currentUri ?: return
-        val saved = prefs().getStringSet(bookmarkKey(uri), emptySet())
-            ?.toMutableSet() ?: mutableSetOf()
+
+        val saved = (prefs().getStringSet(bookmarkKey(uri), emptySet())
+            ?: emptySet()).toMutableSet()
+
         val page = pageIndex.toString()
 
         if (saved.contains(page)) {
@@ -369,9 +473,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun showBookmarks() {
         val uri = currentUri ?: return
-        val saved = prefs().getStringSet(bookmarkKey(uri), emptySet())
-            ?.mapNotNull { it.toIntOrNull() }
-            ?.sorted() ?: emptyList()
+
+        val saved = (prefs().getStringSet(bookmarkKey(uri), emptySet())
+            ?: emptySet())
+            .mapNotNull { it.toIntOrNull() }
+            .sorted()
 
         if (saved.isEmpty()) {
             message("No bookmarks saved yet")
@@ -379,8 +485,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         val labels = saved.map { "Page ${it + 1}" }.toTypedArray()
+
         AlertDialog.Builder(this)
-            .setTitle("Bookmarks")
+            .setTitle("Saved Bookmarks")
             .setItems(labels) { _, which ->
                 pageIndex = saved[which]
                 renderPage()
@@ -395,20 +502,13 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {
         }
         renderer = null
+
         try {
             descriptor?.close()
         } catch (_: Exception) {
         }
         descriptor = null
         currentUri = null
-    }
-    override fun onBackPressed() {
-    if (renderer != null) {
-        closePdf()
-        showHome()
-    } else {
-        super.onBackPressed()
-    }
     }
 
     private fun message(text: String) {
