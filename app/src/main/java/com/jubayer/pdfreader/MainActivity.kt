@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.*
@@ -26,6 +27,8 @@ class MainActivity : AppCompatActivity() {
     private var currentUri: Uri? = null
     private var pageIndex = 0
     private var darkMode = false
+    private var touchStartX = 0f
+    private var touchStartY = 0f
 
     private lateinit var pageImage: ImageView
     private lateinit var status: TextView
@@ -332,10 +335,42 @@ class MainActivity : AppCompatActivity() {
         root.addView(pageRow)
 
         pageImage = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            adjustViewBounds = true
-            contentDescription = "PDF page"
-            setBackgroundColor(Color.WHITE)
+    scaleType = ImageView.ScaleType.FIT_CENTER
+    adjustViewBounds = true
+    contentDescription = "PDF page"
+    setBackgroundColor(Color.WHITE)
+
+    setOnTouchListener { _, event ->
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                touchStartX = event.x
+                touchStartY = event.y
+                true
+            }
+
+            MotionEvent.ACTION_UP -> {
+                val dx = event.x - touchStartX
+                val dy = event.y - touchStartY
+
+                if (kotlin.math.abs(dx) > 80 &&
+                    kotlin.math.abs(dx) > kotlin.math.abs(dy)
+                ) {
+                    val count = renderer?.pageCount ?: 0
+
+                    if (dx < 0 && pageIndex < count - 1) {
+                        pageIndex++
+                        renderPage()
+                    } else if (dx > 0 && pageIndex > 0) {
+                        pageIndex--
+                        renderPage()
+                    }
+                }
+                true
+            }
+
+            else -> true
+        }
+    }
         }
 
         root.addView(
