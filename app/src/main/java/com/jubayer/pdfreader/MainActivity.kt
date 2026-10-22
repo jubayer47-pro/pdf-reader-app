@@ -30,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private var touchStartX = 0f
     private var touchStartY = 0f
     private var zoomScale = 1.0f
+    private var pinchStartDistance = 0f
 
     private lateinit var pageImage: ImageView
     private lateinit var status: TextView
@@ -40,6 +41,14 @@ class MainActivity : AppCompatActivity() {
 
     private val blue = Color.rgb(23, 105, 224)
 
+    private fun getPinchDistance(event: MotionEvent): Float {
+    if (event.pointerCount < 2) return 0f
+
+    val dx = event.getX(0) - event.getX(1)
+    val dy = event.getY(0) - event.getY(1)
+
+    return kotlin.math.sqrt(dx * dx + dy * dy)
+    }
     private fun prefs() =
         getSharedPreferences("pdf_reader", MODE_PRIVATE)
 
@@ -402,39 +411,66 @@ class MainActivity : AppCompatActivity() {
     adjustViewBounds = true
     contentDescription = "PDF page"
     setBackgroundColor(Color.WHITE)
-
-    setOnTouchListener { _, event ->
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                touchStartX = event.x
-                touchStartY = event.y
-                true
-            }
-
-            MotionEvent.ACTION_UP -> {
-                val dx = event.x - touchStartX
-                val dy = event.y - touchStartY
-
-                if (kotlin.math.abs(dx) > 80 &&
-                    kotlin.math.abs(dx) > kotlin.math.abs(dy)
-                ) {
-                    val count = renderer?.pageCount ?: 0
-
-                    if (dx < 0 && pageIndex < count - 1) {
-                        pageIndex++
-                        renderPage()
-                    } else if (dx > 0 && pageIndex > 0) {
-                        pageIndex--
-                        renderPage()
-                    }
+}
+    pageImage.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    touchStartX = event.x
+                    touchStartY = event.y
+                    true
                 }
-                true
-            }
 
-            else -> true
-        }
-    }
-        }
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    pinchStartDistance = getPinchDistance(event)
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    if (event.pointerCount >= 2) {
+                        val newDistance = getPinchDistance(event)
+
+                        if (pinchStartDistance > 0f && newDistance > 0f) {
+                            zoomScale = (
+                                zoomScale * newDistance / pinchStartDistance
+                            ).coerceIn(1.0f, 3.0f)
+
+                            pageImage.scaleX = zoomScale
+                            pageImage.scaleY = zoomScale
+                        }
+
+                        pinchStartDistance = newDistance
+                    }
+                    true
+                }
+
+                MotionEvent.ACTION_POINTER_UP -> {
+                    pinchStartDistance = 0f
+                    true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    val dx = event.x - touchStartX
+                    val dy = event.y - touchStartY
+
+                    if (kotlin.math.abs(dx) > 80 &&
+                        kotlin.math.abs(dx) > kotlin.math.abs(dy)
+                    ) {
+                        val count = renderer?.pageCount ?: 0
+
+                        if (dx < 0 && pageIndex < count - 1) {
+                            pageIndex++
+                            renderPage()
+                        } else if (dx > 0 && pageIndex > 0) {
+                            pageIndex--
+                            renderPage()
+                        }
+                    }
+                    true
+                }
+
+                else -> true
+            }
+       }
 
         root.addView(
             pageImage,
